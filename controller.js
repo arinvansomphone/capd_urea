@@ -9,6 +9,7 @@ function calculateVolume() {
     // Check if all required fields are filled
     if (!age || !height || !weight || !sex) {
         volumeInput.value = '';
+        delete volumeInput.dataset.exact;
         return;
     }
     
@@ -21,9 +22,11 @@ function calculateVolume() {
         volume = -2.097 + (0.1069 * height) + (0.2466 * weight);
     }
     
-    // Display volume rounded to 2 decimal places
+    // Display volume rounded to 1 decimal place; keep the unrounded value for the
+    // simulation (read back by gatherPrescriptionInputs) so display rounding can't shift results
     if (volume !== undefined) {
-        volumeInput.value = volume.toFixed(2);
+        volumeInput.value = volume.toFixed(1);
+        volumeInput.dataset.exact = volume;
     }
 }
 
@@ -45,6 +48,13 @@ const treatments = {
 const treatmentHistory = [];  // [{results, inputs, colorIndex}, ...] - index 0 is most recent, max 4
 let nextColorIndex = 0;  // Cycles 0-3; assigns each new treatment run a persistent color slot
 
+// Read a row's "Total UF (mL)". An entered 0 is treated as 1 mL for the simulation; this
+// happens here rather than by rewriting the field, so the user still sees the 0 they typed.
+function readRowUF(id) {
+    const uf = parseFloat(document.getElementById(id).value) || 0;
+    return uf === 0 && document.getElementById(id).value !== '' ? 1 : uf;
+}
+
 // Gather form inputs for a specific prescription
 function gatherPrescriptionInputs(prescriptionNum) {
     const prefix = `p${prescriptionNum}`;
@@ -53,7 +63,8 @@ function gatherPrescriptionInputs(prescriptionNum) {
     const kru = parseFloat(document.getElementById('kru').value);
     const mtacElement = document.getElementById('mtac');
     const mtac = parseFloat(mtacElement.value || mtacElement.options[mtacElement.selectedIndex]?.value);
-    const volume = parseFloat(document.getElementById('volume').value);
+    const volumeInput = document.getElementById('volume');
+    const volume = parseFloat(volumeInput.dataset.exact ?? volumeInput.value);
     const pna = parseFloat(document.getElementById('pna').value);
     const weight = parseFloat(document.getElementById('weight').value);
     const gen = computeGeneration(pna, weight);
@@ -78,7 +89,7 @@ function gatherPrescriptionInputs(prescriptionNum) {
     const repNumber = parseFloat(document.getElementById(`${prefix}-rep-number`).value) || 0;
     const repVolume = parseFloat(document.getElementById(`${prefix}-rep-volume`).value) || 0;
     const repTimeTotal = parseFloat(document.getElementById(`${prefix}-rep-time`).value) || 0;
-    const repUF = parseFloat(document.getElementById(`${prefix}-rep-uf`).value) || 0;
+    const repUF = readRowUF(`${prefix}-rep-uf`);
     
     if (repNumber > 0 && repVolume > 0 && repTimeTotal > 0) {
         const repTimePerExchange = repTimeTotal / repNumber;
@@ -94,7 +105,7 @@ function gatherPrescriptionInputs(prescriptionNum) {
     const add1Number = parseFloat(document.getElementById(`${prefix}-add1-number`).value) || 0;
     const add1Volume = parseFloat(document.getElementById(`${prefix}-add1-volume`).value) || 0;
     const add1TimeTotal = parseFloat(document.getElementById(`${prefix}-add1-time`).value) || 0;
-    const add1UF = parseFloat(document.getElementById(`${prefix}-add1-uf`).value) || 0;
+    const add1UF = readRowUF(`${prefix}-add1-uf`);
     
     if (add1Number > 0 && add1Volume > 0 && add1TimeTotal > 0) {
         const add1TimePerExchange = add1TimeTotal / add1Number;
@@ -110,7 +121,7 @@ function gatherPrescriptionInputs(prescriptionNum) {
     const add2Number = parseFloat(document.getElementById(`${prefix}-add2-number`).value) || 0;
     const add2Volume = parseFloat(document.getElementById(`${prefix}-add2-volume`).value) || 0;
     const add2TimeTotal = parseFloat(document.getElementById(`${prefix}-add2-time`).value) || 0;
-    const add2UF = parseFloat(document.getElementById(`${prefix}-add2-uf`).value) || 0;
+    const add2UF = readRowUF(`${prefix}-add2-uf`);
     
     if (add2Number > 0 && add2Volume > 0 && add2TimeTotal > 0) {
         const add2TimePerExchange = add2TimeTotal / add2Number;
@@ -357,7 +368,7 @@ function updateGraphWithTreatment(treatmentNum, results) {
             .filter((_, j) => j % 10 === 0)
             .map(v => v / 10 * 0.93); // mg/L → mg/dL (plasma)
         const avg = arr.length > 0 ? arr.reduce((sum, val) => sum + val, 0) / arr.length : null;
-        // num = the tx column this entry occupies in the results table (newest = Treatment 1),
+        // num = the tx column this entry occupies in the results table (newest = Prescription 1),
         // so the graph legend and the table use one numbering. Color still tracks colorIndex.
         treatmentsData[entry.colorIndex] = { data: arr, avg, num: i + 1 };
     });
@@ -367,9 +378,32 @@ function updateGraphWithTreatment(treatmentNum, results) {
     }
 }
 
+// Compute the four reported metrics for one treatmentHistory entry.
+// tac and apc are returned in internal units (mg/L plasma water); kurea and ktv are final.
+function computeMetrics({ results, inputs }) {
+    const { plasmaConcentration, peakConcentration, plasmaToDialysate, excretion } = results;
+    const totalMinutes = plasmaConcentration.length; // 10080
+
+    // TAC: mean plasma conc over the week (mg/L plasma water)
+    const tac = plasmaConcentration.reduce((s, v) => s + v, 0) / totalMinutes;
+    // APC: mean of start-of-day peak concentrations (mg/L plasma water)
+    const apc = peakConcentration.length > 0
+        ? peakConcentration.reduce((s, v) => s + v, 0) / peakConcentration.length : 0;
+    // Total weekly solute removal (mg): dialysate flux + renal excretion, each mg/min × 1 min
+    const weeklyRemoval = plasmaToDialysate.reduce((s, v) => s + v, 0)
+        + excretion.reduce((s, v) => s + v, 0);
+    // Time-averaged Kurea (mL plasma/min): total weekly removal / (whole-plasma TAC × minutes).
+    // Whole-plasma TAC is tac × 0.93; × 1000 converts L → mL.
+    const kurea = tac > 0 ? weeklyRemoval / (tac * 0.93 * totalMinutes) * 1000 : 0;
+    // Weekly Kt/Vurea = time-averaged Kurea × 10080 min / Vd (mL, baseline body water)
+    const ktv = kurea * totalMinutes / (inputs.volume * 1000);
+
+    return { ktv, apc, tac, kurea };
+}
+
 // Update results table - populates all 4 columns from treatmentHistory
 function updateAllResults() {
-    const metrics = ['ktv', 'apc', 'tac', 'kurea'];
+    const metrics = ['apc', 'tac', 'kurea', 'ktv'];
     
     for (let col = 1; col <= 4; col++) {
         const entry = treatmentHistory[col - 1];
@@ -387,50 +421,17 @@ function updateAllResults() {
 
         if (dot) dot.style.backgroundColor = TREATMENT_COLORS[entry.colorIndex];
 
-        const { results, inputs } = entry;
-        const { plasmaConcentration, peakConcentration, plasmaToDialysate, excretion } = results;
-        const { volume } = inputs;
+        const { ktv, apc, tac, kurea } = computeMetrics(entry);
 
-        // TAC: mean plasma conc over all 10080 minutes (mg/L)
-        const tac = plasmaConcentration.reduce((s, v) => s + v, 0) / plasmaConcentration.length;
-        // APC: mean of start-of-day peak concentrations (mg/L)
-        const apc = peakConcentration.length > 0
-            ? peakConcentration.reduce((s, v) => s + v, 0) / peakConcentration.length : 0;
-        // Weekly renal removal: sum of renal excretion (mg/min) × 1 min = mg
-        const weeklyRenalRemoval = excretion.reduce((s, v) => s + v, 0);
-        // Weekly removal: sum of (dialysate flux + renal excretion) in mg/min × 1 min = mg
-        const weeklyRemoval = plasmaToDialysate.reduce((s, v) => s + v, 0) + weeklyRenalRemoval;
-        // stdKt/V = total clearance (mL) / V (mL)
-        // total clearance (mL) = weeklyRemoval (mg) / TAC (mg/L) × 1000 (mL/L)
-        const V_mL = volume * 1000;
-        const ktv = tac > 0 ? (weeklyRemoval / (tac * 0.93) * 1000) / V_mL : 0;
-        // Time-averaged Kurea (mL plasma/min): weekly renal removal / (whole-plasma TAC × total
-        // minutes) × 1000. Derived from simulated excretion rather than the raw Kru input. Uses
-        // whole-plasma TAC (tac × 0.93), like stdKt/V above, so the result is a whole-plasma
-        // clearance matching the cell's units — it recovers the entered Kru exactly, since kru
-        // is held constant across the simulation. Dividing by plasma-water tac instead would
-        // report 0.93 × Kru under a whole-plasma label.
-        const kurea = tac > 0 ? (weeklyRenalRemoval / (tac * 0.93 * plasmaConcentration.length)) * 1000 : 0;
-
-        document.getElementById(`ktv-${suffix}`).textContent = ktv.toFixed(2);
         document.getElementById(`apc-${suffix}`).textContent = (apc / 10 * 0.93).toFixed(1);
         document.getElementById(`tac-${suffix}`).textContent = (tac / 10 * 0.93).toFixed(1);
         document.getElementById(`kurea-${suffix}`).textContent = kurea.toFixed(2);
+        document.getElementById(`ktv-${suffix}`).textContent = ktv.toFixed(2);
     }
 
     if (treatmentHistory.length > 0) {
-        const { results, inputs } = treatmentHistory[0];
-        const { plasmaConcentration, peakConcentration, plasmaToDialysate, excretion } = results;
-        const { volume } = inputs;
-        const tac = plasmaConcentration.reduce((s, v) => s + v, 0) / plasmaConcentration.length;
-        const apc = peakConcentration.length > 0
-            ? peakConcentration.reduce((s, v) => s + v, 0) / peakConcentration.length : 0;
-        const weeklyRenalRemoval = excretion.reduce((s, v) => s + v, 0);
-        const weeklyRemoval = plasmaToDialysate.reduce((s, v) => s + v, 0) + weeklyRenalRemoval;
-        const V_mL = volume * 1000;
-        const ktv = tac > 0 ? (weeklyRemoval / (tac * 0.93) * 1000) / V_mL : 0;
-        const kurea = tac > 0 ? (weeklyRenalRemoval / (tac * 0.93 * plasmaConcentration.length)) * 1000 : 0;
-        console.log(`stdKt/V: ${ktv.toFixed(2)}, APC: ${(apc/10*0.93).toFixed(2)} mg/dL, TAC: ${(tac/10*0.93).toFixed(2)} mg/dL, Kurea: ${kurea.toFixed(2)} mL plasma/min`);
+        const { ktv, apc, tac, kurea } = computeMetrics(treatmentHistory[0]);
+        console.log(`APC: ${(apc/10*0.93).toFixed(2)} mg/dL, TAC: ${(tac/10*0.93).toFixed(2)} mg/dL, Kurea: ${kurea.toFixed(2)} mL plasma/min, weekly Kt/V: ${ktv.toFixed(2)}`);
     }
 }
 
@@ -479,7 +480,7 @@ function runTreatment(treatmentNum) {
         
     } catch (error) {
         console.error(`Error running treatment ${treatmentNum}:`, error);
-        alert(`Error calculating treatment: ${error.message}`);
+        alert(`Error calculating prescription: ${error.message}`);
     }
 }
 
@@ -579,14 +580,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 const input = document.getElementById(`${prefix}-${type}-${field}`);
                 if (input) {
                     input.addEventListener('input', updateButtonStates);
-                    if (field === 'uf') {
-                        input.addEventListener('change', () => {
-                            const val = parseFloat(input.value);
-                            if (input.value !== '' && val === 0) {
-                                input.value = 1;
-                            }
-                        });
-                    }
                     if (field === 'volume') {
                         input.addEventListener('change', () => {
                             const val = parseFloat(input.value);
@@ -602,7 +595,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             const add2Time = parseFloat(document.getElementById(`${prefix}-add2-time`).value) || 0;
                             const totalHours = repTime + add1Time + add2Time;
                             if (totalHours > 24) {
-                                alert(`Warning: Total treatment time is ${totalHours.toFixed(1)} hours, which exceeds 24 hours. Please adjust the number of exchanges or dwell times.`);
+                                alert(`Warning: Total prescription time is ${totalHours.toFixed(1)} hours, which exceeds 24 hours. Please adjust the number of exchanges or dwell times.`);
                             }
                         });
                     }
@@ -628,7 +621,7 @@ function resetAll() {
     }
 
     // Reset numeric results table
-    ['ktv', 'apc', 'tac', 'kurea'].forEach(metric => {
+    ['apc', 'tac', 'kurea', 'ktv'].forEach(metric => {
         for (let col = 1; col <= 4; col++) {
             const el = document.getElementById(`${metric}-tx${col}`);
             if (el) el.textContent = '-';
