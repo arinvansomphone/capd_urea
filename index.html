@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>PD Weekly Cycle Calculator</title>
+    <title>PD Weekly Cycle Calculator: APD Urea</title>
     <link rel="stylesheet" href="site.css">
     <style>
         /* Shared tokens, text scaling, reset and header live in site.css (also used by
@@ -391,11 +391,11 @@
 <body>
     <header>
         <div class="title-block">
-            <h1><a href="index.html" class="site-title">PD Weekly Cycle Calculator</a></h1>
-            <p class="description">Questions or concerns about program? Email <a href="mailto:twmeyer@stanford.edu">twmeyer@stanford.edu</a>.</p>
+            <h1><a href="index.html" class="site-title">PD Weekly Cycle Calculator: APD Urea</a></h1>
+            <p class="description">Program Description at <a href="#">webaddress</a></p>
         </div>
         <div class="header-meta">
-            <span class="updated">Last updated 09/21/2026</span>
+            <span class="updated">Last updated 10/9/2026</span>
             <a href="about.html" class="nav-link">About</a>
         </div>
     </header>
@@ -426,7 +426,7 @@
                             
                             <div class="input-group">
                                 <label for="pna">nPNA (g/kg/day)</label>
-                                <input type="number" id="pna" name="pna" min="0" step="any">
+                                <input type="number" id="pna" name="pna" min="0" step="any" value="0.9">
                                 <em class="hint">also called nPCR</em>
                             </div>
                         </div>
@@ -522,7 +522,7 @@
                                 <thead>
                                     <tr>
                                         <th></th>
-                                        <th>Number</th>
+                                        <th>Number of Cycles</th>
                                         <th>Volume (L)</th>
                                         <th>Total Time (hr)</th>
                                         <th>Total UF (mL)</th>
@@ -537,15 +537,15 @@
                                         <td><input type="number" id="p2-rep-uf" min="0" step="any"></td>
                                     </tr>
                                     <tr>
-                                        <td>Additional #1</td>
-                                        <td><input type="number" id="p2-add1-number" min="0" step="any"></td>
+                                        <td>Last Fill</td>
+                                        <td></td>
                                         <td><input type="number" id="p2-add1-volume" min="0" step="any"></td>
                                         <td><input type="number" id="p2-add1-time" min="0" step="any"></td>
                                         <td><input type="number" id="p2-add1-uf" min="0" step="any"></td>
                                     </tr>
                                     <tr>
-                                        <td>Additional #2</td>
-                                        <td><input type="number" id="p2-add2-number" min="0" step="any"></td>
+                                        <td>Additional Cycle</td>
+                                        <td></td>
                                         <td><input type="number" id="p2-add2-volume" min="0" step="any"></td>
                                         <td><input type="number" id="p2-add2-time" min="0" step="any"></td>
                                         <td><input type="number" id="p2-add2-uf" min="0" step="any"></td>
@@ -576,21 +576,21 @@
                         </thead>
                         <tbody>
                             <tr>
-                                <td>APC (mg/dL plasma)</td>
+                                <td>Peak Concentration (mg/dL plasma)</td>
                                 <td id="apc-tx1">-</td>
                                 <td id="apc-tx2">-</td>
                                 <td id="apc-tx3">-</td>
                                 <td id="apc-tx4">-</td>
                             </tr>
                             <tr>
-                                <td>TAC (mg/dL plasma)</td>
+                                <td>Time Averaged Concentration (mg/dL plasma)</td>
                                 <td id="tac-tx1">-</td>
                                 <td id="tac-tx2">-</td>
                                 <td id="tac-tx3">-</td>
                                 <td id="tac-tx4">-</td>
                             </tr>
                             <tr>
-                                <td>Time averaged Kurea (mL plasma/min)</td>
+                                <td>Time Averaged Kurea (mL plasma/min)</td>
                                 <td id="kurea-tx1">-</td>
                                 <td id="kurea-tx2">-</td>
                                 <td id="kurea-tx3">-</td>

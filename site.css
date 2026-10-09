@@ -87,13 +87,16 @@ header h1 {
 }
 
 .description a {
-    color: inherit;
+    color: var(--accent);
     text-decoration: underline;
     text-underline-offset: 2px;
 }
 
+.description a:hover {
+    color: var(--accent-hover);
+}
+
 .site-title:hover,
-.description a:hover,
 .nav-link:hover {
     color: var(--accent);
 }

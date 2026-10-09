@@ -85,8 +85,8 @@ function createCustomLegend() {
 
 // Renumber the legend to match the Numeric Results columns.
 // Colors are pinned to a slot for the life of a run (see colorIndex in controller.js), but the
-// table numbers by recency — newest is Prescription 1 — so a slot's *number* changes as history
-// shifts. treatmentsData[slot].num carries the column that slot occupies; slots with no
+// table numbers by run order — oldest shown is Prescription 1 — so a slot's *number* changes when
+// the oldest run drops off after a 5th is added. treatmentsData[slot].num carries the column that slot occupies; slots with no
 // treatment are hidden rather than advertising a run that isn't there.
 function updateLegendLabels(treatmentsData) {
     for (let i = 0; i < 4; i++) {

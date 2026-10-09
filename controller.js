@@ -30,7 +30,8 @@ function calculateVolume() {
     }
 }
 
-// Calculate urea nitrogen generation rate (mg urea-N/min) from nPNA using Borah formula:
+// Calculate urea nitrogen generation rate (mg urea-N/min) from nPNA using Bergström's CAPD
+// equation 4A (Kidney Int 1993;44:1048), PNA = 19 + 7.62 × UNA, solved for UNA:
 // PNA (g/day) = nPNA (g/kg/day) × weight (kg)
 // ureaN (g/day) = (PNA - 19) / 7.62
 // ureaN (mg/min) = ureaN (g/day) × 1000 / 1440
@@ -45,7 +46,7 @@ function computeGeneration(pna, weight) {
 const treatments = {
     treatment2: null  // Most recent, used by graph
 };
-const treatmentHistory = [];  // [{results, inputs, colorIndex}, ...] - index 0 is most recent, max 4
+const treatmentHistory = [];  // [{results, inputs, colorIndex}, ...] - in run order (index 0 = Prescription 1), max 4
 let nextColorIndex = 0;  // Cycles 0-3; assigns each new treatment run a persistent color slot
 
 // Read a row's "Total UF (mL)". An entered 0 is treated as 1 mL for the simulation; this
@@ -53,6 +54,13 @@ let nextColorIndex = 0;  // Cycles 0-3; assigns each new treatment run a persist
 function readRowUF(id) {
     const uf = parseFloat(document.getElementById(id).value) || 0;
     return uf === 0 && document.getElementById(id).value !== '' ? 1 : uf;
+}
+
+// Read a row's exchange count. Rows without a Number box (Last Fill, Additional Cycle on the
+// APD interface) are always a single exchange.
+function readRowNumber(id) {
+    const el = document.getElementById(id);
+    return el ? (parseFloat(el.value) || 0) : 1;
 }
 
 // Gather form inputs for a specific prescription
@@ -86,7 +94,7 @@ function gatherPrescriptionInputs(prescriptionNum) {
     const numberData = [];
     
     // Repeated exchanges
-    const repNumber = parseFloat(document.getElementById(`${prefix}-rep-number`).value) || 0;
+    const repNumber = readRowNumber(`${prefix}-rep-number`);
     const repVolume = parseFloat(document.getElementById(`${prefix}-rep-volume`).value) || 0;
     const repTimeTotal = parseFloat(document.getElementById(`${prefix}-rep-time`).value) || 0;
     const repUF = readRowUF(`${prefix}-rep-uf`);
@@ -101,8 +109,8 @@ function gatherPrescriptionInputs(prescriptionNum) {
         }
     }
     
-    // Additional Exchange #1
-    const add1Number = parseFloat(document.getElementById(`${prefix}-add1-number`).value) || 0;
+    // Last Fill (UI label; add1 in IDs) - always 1 exchange
+    const add1Number = readRowNumber(`${prefix}-add1-number`);
     const add1Volume = parseFloat(document.getElementById(`${prefix}-add1-volume`).value) || 0;
     const add1TimeTotal = parseFloat(document.getElementById(`${prefix}-add1-time`).value) || 0;
     const add1UF = readRowUF(`${prefix}-add1-uf`);
@@ -117,8 +125,8 @@ function gatherPrescriptionInputs(prescriptionNum) {
         }
     }
     
-    // Additional Exchange #2
-    const add2Number = parseFloat(document.getElementById(`${prefix}-add2-number`).value) || 0;
+    // Additional Cycle (UI label; add2 in IDs) - always 1 exchange
+    const add2Number = readRowNumber(`${prefix}-add2-number`);
     const add2Volume = parseFloat(document.getElementById(`${prefix}-add2-volume`).value) || 0;
     const add2TimeTotal = parseFloat(document.getElementById(`${prefix}-add2-time`).value) || 0;
     const add2UF = readRowUF(`${prefix}-add2-uf`);
@@ -368,7 +376,7 @@ function updateGraphWithTreatment(treatmentNum, results) {
             .filter((_, j) => j % 10 === 0)
             .map(v => v / 10 * 0.93); // mg/L → mg/dL (plasma)
         const avg = arr.length > 0 ? arr.reduce((sum, val) => sum + val, 0) / arr.length : null;
-        // num = the tx column this entry occupies in the results table (newest = Prescription 1),
+        // num = the tx column this entry occupies in the results table (run order: oldest = Prescription 1),
         // so the graph legend and the table use one numbering. Color still tracks colorIndex.
         treatmentsData[entry.colorIndex] = { data: arr, avg, num: i + 1 };
     });
@@ -381,14 +389,14 @@ function updateGraphWithTreatment(treatmentNum, results) {
 // Compute the four reported metrics for one treatmentHistory entry.
 // tac and apc are returned in internal units (mg/L plasma water); kurea and ktv are final.
 function computeMetrics({ results, inputs }) {
-    const { plasmaConcentration, peakConcentration, plasmaToDialysate, excretion } = results;
+    const { plasmaConcentration, plasmaToDialysate, excretion } = results;
     const totalMinutes = plasmaConcentration.length; // 10080
 
     // TAC: mean plasma conc over the week (mg/L plasma water)
     const tac = plasmaConcentration.reduce((s, v) => s + v, 0) / totalMinutes;
-    // APC: mean of start-of-day peak concentrations (mg/L plasma water)
-    const apc = peakConcentration.length > 0
-        ? peakConcentration.reduce((s, v) => s + v, 0) / peakConcentration.length : 0;
+    // Peak concentration: single highest plasma conc over the week (mg/L plasma water).
+    // Kept under the `apc` key / `apc-tx*` IDs; the UI label is "Peak Concentration".
+    const apc = plasmaConcentration.reduce((m, v) => Math.max(m, v), 0);
     // Total weekly solute removal (mg): dialysate flux + renal excretion, each mg/min × 1 min
     const weeklyRemoval = plasmaToDialysate.reduce((s, v) => s + v, 0)
         + excretion.reduce((s, v) => s + v, 0);
@@ -430,8 +438,8 @@ function updateAllResults() {
     }
 
     if (treatmentHistory.length > 0) {
-        const { ktv, apc, tac, kurea } = computeMetrics(treatmentHistory[0]);
-        console.log(`APC: ${(apc/10*0.93).toFixed(2)} mg/dL, TAC: ${(tac/10*0.93).toFixed(2)} mg/dL, Kurea: ${kurea.toFixed(2)} mL plasma/min, weekly Kt/V: ${ktv.toFixed(2)}`);
+        const { ktv, apc, tac, kurea } = computeMetrics(treatmentHistory[treatmentHistory.length - 1]);
+        console.log(`Peak: ${(apc/10*0.93).toFixed(2)} mg/dL, TAC: ${(tac/10*0.93).toFixed(2)} mg/dL, Kurea: ${kurea.toFixed(2)} mL plasma/min, weekly Kt/V: ${ktv.toFixed(2)}`);
     }
 }
 
@@ -468,9 +476,11 @@ function runTreatment(treatmentNum) {
         );
         
         treatments.treatment2 = results;
-        treatmentHistory.unshift({ results, inputs, colorIndex: nextColorIndex });
+        // Append so existing prescriptions keep their numbers; the new run takes the next one.
+        // Once 4 are shown, the oldest (Prescription 1) drops off and the rest shift down.
+        treatmentHistory.push({ results, inputs, colorIndex: nextColorIndex });
         nextColorIndex = (nextColorIndex + 1) % 4;
-        if (treatmentHistory.length > 4) treatmentHistory.pop();
+        if (treatmentHistory.length > 4) treatmentHistory.shift();
         
         // Update graph (shows most recent)
         updateGraphWithTreatment(treatmentNum, results);
@@ -512,19 +522,19 @@ function validatePrescription(prescriptionNum) {
     // Check if at least one exchange has data (all fields must be filled)
     const exchanges = [
         {
-            number: document.getElementById(`${prefix}-rep-number`).value,
+            number: readRowNumber(`${prefix}-rep-number`),
             volume: document.getElementById(`${prefix}-rep-volume`).value,
             time: document.getElementById(`${prefix}-rep-time`).value,
             uf: document.getElementById(`${prefix}-rep-uf`).value
         },
         {
-            number: document.getElementById(`${prefix}-add1-number`).value,
+            number: readRowNumber(`${prefix}-add1-number`),
             volume: document.getElementById(`${prefix}-add1-volume`).value,
             time: document.getElementById(`${prefix}-add1-time`).value,
             uf: document.getElementById(`${prefix}-add1-uf`).value
         },
         {
-            number: document.getElementById(`${prefix}-add2-number`).value,
+            number: readRowNumber(`${prefix}-add2-number`),
             volume: document.getElementById(`${prefix}-add2-volume`).value,
             time: document.getElementById(`${prefix}-add2-time`).value,
             uf: document.getElementById(`${prefix}-add2-uf`).value
