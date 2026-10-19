@@ -75,9 +75,12 @@
             min-width: 0;
         }
 
+        /* Stretched to the Prescription Data box's height; the table grows to fill it */
         .results-box {
             flex: 1.1;
             min-width: 0;
+            display: flex;
+            flex-direction: column;
         }
 
         h2 {
@@ -122,6 +125,20 @@
             font-size: 0.9375rem;
             font-weight: 500;
             margin-bottom: 0.3125rem;
+        }
+
+        /* Patient Data is the tallest box in the top row (the Vd label and nPNA hint each wrap
+           to 2 lines), so its spacing is tighter than the shared defaults to keep it inside. */
+        .data-box h2 {
+            margin-bottom: 0.625rem;
+        }
+
+        .data-box .input-group:not(:last-child) {
+            margin-bottom: 0.5rem;
+        }
+
+        .data-box .input-group label {
+            margin-bottom: 0.1875rem;
         }
 
         .hint {
@@ -210,8 +227,14 @@
             border-bottom: 1px solid var(--border);
         }
 
+        /* Four exchange rows: tighter than the other inputs so the bottom row stays short
+           enough for the Patient Data box above it to fit (its nPNA hint wraps to 2 lines). */
         .prescription-table td {
-            padding: 0.3125rem 0.375rem;
+            padding: 0.1875rem 0.375rem;
+        }
+
+        .prescription-table input[type="number"] {
+            height: 2rem;
         }
 
         .prescription-table tbody tr:first-child td {
@@ -332,6 +355,7 @@
 
         /* ---------- Results ---------- */
         .results-table {
+            flex: 1;
             width: 100%;
             border-collapse: collapse;
             font-variant-numeric: tabular-nums;
@@ -395,7 +419,7 @@
             <p class="description">Program Description at <a href="#">webaddress</a></p>
         </div>
         <div class="header-meta">
-            <span class="updated">Last updated 10/9/2026</span>
+            <span class="updated">Last updated 10/18/2026</span>
             <a href="about.html" class="nav-link">About</a>
         </div>
     </header>
@@ -522,7 +546,7 @@
                                 <thead>
                                     <tr>
                                         <th></th>
-                                        <th>Number of Cycles</th>
+                                        <th>Number of Exchanges</th>
                                         <th>Volume (L)</th>
                                         <th>Total Time (hr)</th>
                                         <th>Total UF (mL)</th>
@@ -530,25 +554,32 @@
                                 </thead>
                                 <tbody>
                                     <tr>
-                                        <td>Repeated</td>
-                                        <td><input type="number" id="p2-rep-number" min="0" step="any"></td>
-                                        <td><input type="number" id="p2-rep-volume" min="0" step="any"></td>
-                                        <td><input type="number" id="p2-rep-time" min="0" step="any"></td>
-                                        <td><input type="number" id="p2-rep-uf" min="0" step="any"></td>
+                                        <td></td>
+                                        <td><input type="number" id="p2-r1-number" min="0" step="any"></td>
+                                        <td><input type="number" id="p2-r1-volume" min="0" step="any"></td>
+                                        <td><input type="number" id="p2-r1-time" min="0" step="any"></td>
+                                        <td><input type="number" id="p2-r1-uf" min="0" step="any"></td>
                                     </tr>
                                     <tr>
-                                        <td>Last Fill</td>
                                         <td></td>
-                                        <td><input type="number" id="p2-add1-volume" min="0" step="any"></td>
-                                        <td><input type="number" id="p2-add1-time" min="0" step="any"></td>
-                                        <td><input type="number" id="p2-add1-uf" min="0" step="any"></td>
+                                        <td><input type="number" id="p2-r2-number" min="0" step="any"></td>
+                                        <td><input type="number" id="p2-r2-volume" min="0" step="any"></td>
+                                        <td><input type="number" id="p2-r2-time" min="0" step="any"></td>
+                                        <td><input type="number" id="p2-r2-uf" min="0" step="any"></td>
                                     </tr>
                                     <tr>
-                                        <td>Additional Cycle</td>
                                         <td></td>
-                                        <td><input type="number" id="p2-add2-volume" min="0" step="any"></td>
-                                        <td><input type="number" id="p2-add2-time" min="0" step="any"></td>
-                                        <td><input type="number" id="p2-add2-uf" min="0" step="any"></td>
+                                        <td><input type="number" id="p2-r3-number" min="0" step="any"></td>
+                                        <td><input type="number" id="p2-r3-volume" min="0" step="any"></td>
+                                        <td><input type="number" id="p2-r3-time" min="0" step="any"></td>
+                                        <td><input type="number" id="p2-r3-uf" min="0" step="any"></td>
+                                    </tr>
+                                    <tr>
+                                        <td></td>
+                                        <td><input type="number" id="p2-r4-number" min="0" step="any"></td>
+                                        <td><input type="number" id="p2-r4-volume" min="0" step="any"></td>
+                                        <td><input type="number" id="p2-r4-time" min="0" step="any"></td>
+                                        <td><input type="number" id="p2-r4-uf" min="0" step="any"></td>
                                     </tr>
                                 </tbody>
                             </table>

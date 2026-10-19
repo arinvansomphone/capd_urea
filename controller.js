@@ -56,8 +56,11 @@ function readRowUF(id) {
     return uf === 0 && document.getElementById(id).value !== '' ? 1 : uf;
 }
 
-// Read a row's exchange count. Rows without a Number box (Last Fill, Additional Cycle on the
-// APD interface) are always a single exchange.
+// Prescription rows, run in this order from midnight on each treatment day. CAPD has four
+// identical rows (Number of Exchanges, Volume, Total Time, Total UF); IDs are p2-r1-* … p2-r4-*.
+const ROW_TYPES = ['r1', 'r2', 'r3', 'r4'];
+
+// Read a row's exchange count. A row without a Number box would count as a single exchange.
 function readRowNumber(id) {
     const el = document.getElementById(id);
     return el ? (parseFloat(el.value) || 0) : 1;
@@ -93,53 +96,21 @@ function gatherPrescriptionInputs(prescriptionNum) {
     const ufData = [];
     const numberData = [];
     
-    // Repeated exchanges
-    const repNumber = readRowNumber(`${prefix}-rep-number`);
-    const repVolume = parseFloat(document.getElementById(`${prefix}-rep-volume`).value) || 0;
-    const repTimeTotal = parseFloat(document.getElementById(`${prefix}-rep-time`).value) || 0;
-    const repUF = readRowUF(`${prefix}-rep-uf`);
-    
-    if (repNumber > 0 && repVolume > 0 && repTimeTotal > 0) {
-        const repTimePerExchange = repTimeTotal / repNumber;
-        const repUFPerExchange = repUF / repNumber;
-        for (let i = 0; i < repNumber; i++) {
-            volumeData.push(repVolume);
-            timeData.push(repTimePerExchange); // Time in hours per exchange
-            ufData.push(repUFPerExchange);     // UF in mL per exchange
+    // Each row: total time and total UF are split evenly across its exchanges
+    ROW_TYPES.forEach(type => {
+        const number = readRowNumber(`${prefix}-${type}-number`);
+        const volume = parseFloat(document.getElementById(`${prefix}-${type}-volume`).value) || 0;
+        const timeTotal = parseFloat(document.getElementById(`${prefix}-${type}-time`).value) || 0;
+        const uf = readRowUF(`${prefix}-${type}-uf`);
+
+        if (number > 0 && volume > 0 && timeTotal > 0) {
+            for (let i = 0; i < number; i++) {
+                volumeData.push(volume);
+                timeData.push(timeTotal / number); // Time in hours per exchange
+                ufData.push(uf / number);          // UF in mL per exchange
+            }
         }
-    }
-    
-    // Last Fill (UI label; add1 in IDs) - always 1 exchange
-    const add1Number = readRowNumber(`${prefix}-add1-number`);
-    const add1Volume = parseFloat(document.getElementById(`${prefix}-add1-volume`).value) || 0;
-    const add1TimeTotal = parseFloat(document.getElementById(`${prefix}-add1-time`).value) || 0;
-    const add1UF = readRowUF(`${prefix}-add1-uf`);
-    
-    if (add1Number > 0 && add1Volume > 0 && add1TimeTotal > 0) {
-        const add1TimePerExchange = add1TimeTotal / add1Number;
-        const add1UFPerExchange = add1UF / add1Number;
-        for (let i = 0; i < add1Number; i++) {
-            volumeData.push(add1Volume);
-            timeData.push(add1TimePerExchange); // Time in hours per exchange
-            ufData.push(add1UFPerExchange);     // UF in mL per exchange
-        }
-    }
-    
-    // Additional Cycle (UI label; add2 in IDs) - always 1 exchange
-    const add2Number = readRowNumber(`${prefix}-add2-number`);
-    const add2Volume = parseFloat(document.getElementById(`${prefix}-add2-volume`).value) || 0;
-    const add2TimeTotal = parseFloat(document.getElementById(`${prefix}-add2-time`).value) || 0;
-    const add2UF = readRowUF(`${prefix}-add2-uf`);
-    
-    if (add2Number > 0 && add2Volume > 0 && add2TimeTotal > 0) {
-        const add2TimePerExchange = add2TimeTotal / add2Number;
-        const add2UFPerExchange = add2UF / add2Number;
-        for (let i = 0; i < add2Number; i++) {
-            volumeData.push(add2Volume);
-            timeData.push(add2TimePerExchange); // Time in hours per exchange
-            ufData.push(add2UFPerExchange);     // UF in mL per exchange
-        }
-    }
+    });
     
     // Calculate total fluid removal
     const totalUF = ufData.reduce((sum, uf) => sum + uf, 0);
@@ -216,9 +187,10 @@ function pdCalculator(kru, mtac, volume, gen, volumeData, timeData, ufData, days
 
             if (isTreatmentDay) {
                 for (let exchange = 0; exchange < numExchange; exchange++) {
-                    // uf: mL/min UF rate during the effective dwell; also drains body volume
-                    const effectiveTime_min = (timeData[exchange] * 60) - deadTime_min;
-                    const uf = ufData[exchange] / effectiveTime_min; // mL/min
+                    // uf: mL/min UF rate during the effective dwell; also drains body volume.
+                    // An exchange no longer than the dead time is all dead time: no transfer, no UF.
+                    const effectiveTime_min = Math.max(0, (timeData[exchange] * 60) - deadTime_min);
+                    const uf = effectiveTime_min > 0 ? ufData[exchange] / effectiveTime_min : 0; // mL/min
 
                     const totalTime_min = timeData[exchange] * 60;
                     const initialTime = t;
@@ -244,8 +216,8 @@ function pdCalculator(kru, mtac, volume, gen, volumeData, timeData, ufData, days
                         dialysateConc[t] = amountDial[t] / (deadVolume_mL + fillVolume[exchange] + ufData[exchange]) * 1000;
                     }
 
-                    // Diffusion-only flux (mg/min): MTAC (mL/min) × ΔC (mg/L) / 1000
-                    fluxDial[t]  = (plasmaConc[t] - dialysateConc[t]) * mtac / 1000;
+                    // Diffusion-only flux (mg/min): MTAC (mL/min) × ΔC (mg/L) / 1000; none if no dwell
+                    fluxDial[t]  = effectiveTime_min > 0 ? (plasmaConc[t] - dialysateConc[t]) * mtac / 1000 : 0;
                     excretion[t] = plasmaConc[t] * kru / 1000;                      // mg/L × mL/min / 1000 = mg/min
                     netMovtIn[t] = gen - excretion[t] - fluxDial[t];               // mg/min
                     volRate[t]   = addRate - uf;                                    // mL/min (UF drains during dwell)
@@ -520,26 +492,12 @@ function validatePrescription(prescriptionNum) {
     }
     
     // Check if at least one exchange has data (all fields must be filled)
-    const exchanges = [
-        {
-            number: readRowNumber(`${prefix}-rep-number`),
-            volume: document.getElementById(`${prefix}-rep-volume`).value,
-            time: document.getElementById(`${prefix}-rep-time`).value,
-            uf: document.getElementById(`${prefix}-rep-uf`).value
-        },
-        {
-            number: readRowNumber(`${prefix}-add1-number`),
-            volume: document.getElementById(`${prefix}-add1-volume`).value,
-            time: document.getElementById(`${prefix}-add1-time`).value,
-            uf: document.getElementById(`${prefix}-add1-uf`).value
-        },
-        {
-            number: readRowNumber(`${prefix}-add2-number`),
-            volume: document.getElementById(`${prefix}-add2-volume`).value,
-            time: document.getElementById(`${prefix}-add2-time`).value,
-            uf: document.getElementById(`${prefix}-add2-uf`).value
-        }
-    ];
+    const exchanges = ROW_TYPES.map(type => ({
+        number: readRowNumber(`${prefix}-${type}-number`),
+        volume: document.getElementById(`${prefix}-${type}-volume`).value,
+        time: document.getElementById(`${prefix}-${type}-time`).value,
+        uf: document.getElementById(`${prefix}-${type}-uf`).value
+    }));
     
     const hasValidExchange = exchanges.some(ex => 
         ex.number && ex.volume && ex.time && ex.uf
@@ -585,7 +543,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         
         // Exchange inputs
-        ['rep', 'add1', 'add2'].forEach(type => {
+        ROW_TYPES.forEach(type => {
             ['number', 'volume', 'time', 'uf'].forEach(field => {
                 const input = document.getElementById(`${prefix}-${type}-${field}`);
                 if (input) {
@@ -600,10 +558,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                     if (field === 'time') {
                         input.addEventListener('change', () => {
-                            const repTime = parseFloat(document.getElementById(`${prefix}-rep-time`).value) || 0;
-                            const add1Time = parseFloat(document.getElementById(`${prefix}-add1-time`).value) || 0;
-                            const add2Time = parseFloat(document.getElementById(`${prefix}-add2-time`).value) || 0;
-                            const totalHours = repTime + add1Time + add2Time;
+                            const totalHours = ROW_TYPES.reduce((sum, t) =>
+                                sum + (parseFloat(document.getElementById(`${prefix}-${t}-time`).value) || 0), 0);
                             if (totalHours > 24) {
                                 alert(`Warning: Total prescription time is ${totalHours.toFixed(1)} hours, which exceeds 24 hours. Please adjust the number of exchanges or dwell times.`);
                             }
@@ -643,7 +599,7 @@ function resetAll() {
     }
 
     // Reset prescription inputs (exchange table)
-    ['rep', 'add1', 'add2'].forEach(type => {
+    ROW_TYPES.forEach(type => {
         ['number', 'volume', 'time', 'uf'].forEach(field => {
             const input = document.getElementById(`p2-${type}-${field}`);
             if (input) input.value = '';

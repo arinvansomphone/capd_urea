@@ -4,8 +4,8 @@
     {
       "name": "pd-model",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "8420"],
-      "port": 8420
+      "runtimeArgs": ["-m", "http.server", "8421"],
+      "port": 8421
     }
   ]
 }
